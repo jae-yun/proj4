@@ -36,6 +36,10 @@ def get_page(page_url):
     """
 
 
+    page = requests.get(page_url)
+    soup = BeautifulSoup(page.text, 'html.parser')
+
+
     return soup, page
 
 
@@ -71,7 +75,13 @@ def get_avg_stars(reviews):
     get_avg_stars(reviews) #=> 6.5
     ------------------------------------------------
     """
-    avg = None
+    avg = 0
+
+    for review in reviews:
+        avg+=review['review_star']
+
+    avg /= len(reviews)
+    
 
     return avg
 
@@ -94,8 +104,16 @@ def get_movie_code(movie_title):
         - 영화 아이디 번호: 네이버에서 지정한 영화의 아이디 번호가 담긴
         숫자(int) 입니다.
     """
+
+
     search_url = f"{BASE_URL}/search/result.naver?query={movie_title}&section=all&ie=utf8"
-    movie_code = None
+    soup, page = get_page(search_url)
+
+    link_el = str(soup.find(class_='result_thumb'))
+    movie_code = re.search(r'[^code=]\d+', link_el).group()
+    movie_code = int(movie_code)
+
+
 
     return movie_code
 
@@ -122,6 +140,22 @@ def get_reviews(movie_code, page_num=1):
     """
     review_url = f"{BASE_URL}/point/af/list.naver?st=mcode&sword={movie_code}&target=after&page={page_num}"
     review_list = []
+    soup, page = get_page(review_url)
+
+    raw_reviews = soup.find(
+        'table', {'class': 'list_netizen'}).findChildren('tr')[1:]
+
+    for rr in raw_reviews:
+        raw_review_text = rr.select('td > a')[1].attrs['onclick']
+        parsed_text = eval(re.search(r'[(].*[)]', raw_review_text)[0])[2]
+ 
+        raw_review_score = str(rr.select('em'))
+        parsed_score = int(re.sub(r'[^0-9]', '', raw_review_score))
+       
+        result = {}
+        result['review_text'] = parsed_text
+        result['review_star'] = parsed_score
+        review_list.append(result)
 
     return review_list
 
@@ -142,6 +176,15 @@ def scrape_by_review_num(movie_title, review_num):
     """
     reviews = []
 
+    q = review_num // 10
+    r = review_num - 10 * q
+    code=get_movie_code(movie_title)
+ 
+    for i in range(1, q+1):
+        reviews.extend(get_reviews(code, i))
+
+    reviews.extend(get_reviews(code, q+1)[:r])    ################
+
     return reviews
 
 
@@ -160,6 +203,10 @@ def scrape_by_page_num(movie_title, page_num=10):
         리뷰를 담은 파이썬 리스트입니다. (각 리뷰 항목은 get_reviews 에서
         명시된 파이썬 딕셔너리 형태여야 합니다.)
     """
+    code=get_movie_code(movie_title)
+    
     reviews = []
+    for i in range(1, page_num+1):
+        reviews.extend(get_reviews(code, i))  ##############
 
     return reviews
